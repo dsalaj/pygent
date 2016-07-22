@@ -63,11 +63,24 @@ class MtxCanvas(GridLayout):
         self.fields_np[2, 4].b = tan(self.time)
         self.time += dt
 
+        dead_zombies = []
+        for z1 in self.zombies:
+            for z2 in self.zombies:
+                if z1 is not z2:
+                    if z1.row == z2.row and z1.col == z2.col:
+                        self.fields_np[z1.row, z1.col].remove_widget(z1)
+                        self.fields_np[z1.row, z1.col].remove_widget(z2)
+                        dead_zombies.append(z1)
+                        dead_zombies.append(z2)
+        dead_zombies = np.array(dead_zombies)
+        self.zombies = np.setdiff1d(self.zombies, dead_zombies)
+
         # move zombies
         for zombie in self.zombies:        
             self.fields_np[zombie.row, zombie.col].remove_widget(zombie)
             zombie.row += randint(-1, 1)
             zombie.col += randint(-1, 1)
+            # wrap axes - torus world
             if zombie.row >= self.rows:
                 zombie.row = 0
             elif zombie.row < 0:
@@ -76,12 +89,8 @@ class MtxCanvas(GridLayout):
                 zombie.col = 0
             elif zombie.col < 0:
                 zombie.col += self.cols
-            try:      
-                self.fields_np[zombie.row, zombie.col].add_widget(zombie)
-            except IndexError as e:
-                print "zombie.row", zombie.row
-                print "zombie.col", zombie.col
-                raise e
+
+            self.fields_np[zombie.row, zombie.col].add_widget(zombie)
 
         # TODO: detect multiple zombies on one field
 
@@ -89,10 +98,9 @@ class MtxCanvas(GridLayout):
 class MtxApp(App):
     def build(self):
         mtx = MtxCanvas()
-        mtx.init_base(dim=(15,15), zombie_num=5)
-        Clock.schedule_interval(mtx.update, 1.0 / 10.0)
+        mtx.init_base(dim=(15, 15), zombie_num=25)
+        Clock.schedule_interval(mtx.update, 1.0 / 30.0)
         return mtx
-
 
 if __name__ == '__main__':
     MtxApp().run()
