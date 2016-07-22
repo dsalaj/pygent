@@ -71,11 +71,11 @@ class MtxCanvas(GridLayout):
             if zombie.row >= self.rows:
                 zombie.row = 0
             elif zombie.row < 0:
-                zombie.row *= -1
+                zombie.row += self.rows
             if zombie.col >= self.cols:
                 zombie.col = 0
             elif zombie.col < 0:
-                zombie.col *= -1                
+                zombie.col += self.cols
             try:      
                 self.fields_np[zombie.row, zombie.col].add_widget(zombie)
             except IndexError as e:
@@ -90,7 +90,7 @@ class MtxApp(App):
     def build(self):
         mtx = MtxCanvas()
         mtx.init_base(dim=(15,15), zombie_num=5)
-        Clock.schedule_interval(mtx.update, 1.0 / 20.0)
+        Clock.schedule_interval(mtx.update, 1.0 / 10.0)
         return mtx
 
 
