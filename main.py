@@ -7,6 +7,12 @@ from kivy.clock import Clock
 from random import randint, random
 import numpy as np
 
+# TODO:
+# - Inspect jupyter code etc.
+# Questions for mentor:
+# - Snapshot history support for simulation necessary? simple implementation by storing ndarray to disk?
+# - Python version constraints for used libraries? First check online
+
 
 class TorusWorld(np.ndarray):
     def __new__(cls, input_array, info=None):
@@ -42,15 +48,37 @@ class Agent(Widget):
         self.row = row
         self.col = col
 
-    def random_move(self, world):
+    def move_random(self, world):
         # move to random unoccupied neighboring field
-        new_row = self.row + randint(-1, 1)
+        new_row = self.row + randint(-1, 1)  # TODO: absolute sum should not be zero
         new_col = self.col + randint(-1, 1)
-        if len(world.field(new_row, new_col).children) > 0:
-            self.random_move(world)
+        if len(world.field(new_row, new_col).children) > 0:  # if cell occupied
+            self.move_random(world)
         else:  # FIXME: refactor - world should normalise the values, not the agent
             self.row = new_row % world.rows
             self.col = new_col % world.cols
+
+    def move_towards(self, world, target):
+        # FIXME: bad comparison of distance! need to use modulo etc. because in torus, calc distances and compare
+        row_direction = 1 if self.row < target.row else (-1 if self.row > target.row else 0)
+        col_direction = 1 if self.col < target.col else (-1 if self.col > target.col else 0)
+        new_row = self.row + row_direction
+        new_col = self.col + col_direction
+        if len(world.field(new_row, new_col).children) > 0:  # if cell occupied
+            self.move_random(world)
+        else:  # FIXME: refactor - world should normalise the values, not the agent
+            self.row = new_row % world.rows
+            self.col = new_col % world.cols
+
+    def find_nearest(self, world, targets):
+        closest = targets[0]
+        closest_diff = (self.row - closest.row, self.col - closest.col)
+        for target in targets:
+            diff = (self.row - target.row, self.col - target.col)
+            if diff < closest_diff:  # FIXME: proper distance comparison from numpy
+                closest = target
+                closest_diff = diff
+        return target
 
     def neighboring_agents(self, world):
         neighbors = world.field(self.row - 1, self.col - 1).children +\
@@ -65,11 +93,16 @@ class Agent(Widget):
 
 
 class Zombie(Agent):
-    color = ListProperty([0, 1, 0, 1])
+    dead = False
+    color = ListProperty([0, 0.8, 0, 1])  # green
+
+    def kill(self):
+        self.dead = True
+        self.color = [1, 0, 0, 1]  # dark green
 
 
 class Human(Agent):
-    color = ListProperty([0.9, 0.8, 0.6, 1])
+    color = ListProperty([0.9, 0.8, 0.6, 1])  # skin color
 
 
 class MtxCanvas(GridLayout):
@@ -98,25 +131,44 @@ class MtxCanvas(GridLayout):
             self.fields[human.row, human.col].add_widget(human)
 
     def update(self, dt):
+        # find dead zombies
+        dead_zombies = []
+        for dead_zombie in self.zombies:  # FIXME: use numpy filtering vectorization way
+            if dead_zombie.dead:
+                dead_zombies.append(dead_zombie)
+
         # move agents
-        for a in self.agents():
+        if len(dead_zombies) > 0:
+            # clean up dead zombies
+            for dead_zombie in dead_zombies:
+                self.fields[dead_zombie.row, dead_zombie.col].remove_widget(dead_zombie)
+            self.zombies = np.setdiff1d(self.zombies, np.array(dead_zombies))
+
+            agents = self.humans
+            for z in self.zombies:  # move zombies toward the dead zombie # FIXME: maybe exclude dead zombies?
+                target = z.find_nearest(self.fields, dead_zombies)
+                self.fields[z.row, z.col].remove_widget(z)
+                z.move_towards(self.fields, target)
+                self.fields[z.row, z.col].add_widget(z)
+
+
+        else:
+            agents = self.agents()
+        for a in agents:
             self.fields[a.row, a.col].remove_widget(a)
-            a.random_move(self.fields)
+            a.move_random(self.fields)
             self.fields[a.row, a.col].add_widget(a)
 
         # conflict
         dead_humans = []
-        dead_zombies = []
         for zombie in self.zombies:
             for neighbor in zombie.neighboring_agents(self.fields):
                 if type(neighbor) is Human:
                     if random() > 0.77:  # conversion threshold
                         dead_humans.append(neighbor)
                     else:
-                        dead_zombies.append(zombie)
-                        self.fields[zombie.row, zombie.col].remove_widget(zombie)
+                        zombie.kill()
                         break  # after the zombie has been killed, he can not infect further victims
-        self.zombies = np.setdiff1d(self.zombies, np.array(dead_zombies))
         zombabies = []
         for human in dead_humans:
             self.fields[human.row, human.col].remove_widget(human)
@@ -132,14 +184,15 @@ class MtxCanvas(GridLayout):
                 print "HUMANS WON!"
             else:
                 print "ZOMBIES WON!"
+            # Clock.unschedule(self.update)
             exit(0)
 
 
 class MtxApp(App):
     def build(self):
         mtx = MtxCanvas()
-        mtx.init_base(dim=(30, 30), zombie_num=20, human_num=15)
-        Clock.schedule_interval(mtx.update, 1.0 / 60.0)
+        mtx.init_base(dim=(20, 20), zombie_num=15, human_num=5)
+        Clock.schedule_interval(mtx.update, 1.0 / 7.0)
         return mtx
 
 if __name__ == '__main__':
