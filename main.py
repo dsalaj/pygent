@@ -2,27 +2,33 @@ from kivy.app import App
 from kivy.uix.widget import Widget
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.boxlayout import BoxLayout
-from kivy.properties import NumericProperty, ListProperty
+from kivy.properties import ListProperty
 from kivy.clock import Clock
-from math import sin, cos, tan
-from random import randint
+from random import randint, random
 import numpy as np
 
-'''
-TODO:
-  + rewrite existing code using numpy instead of python arrays
-  + init fields using numpy broadcast vectorization
-  + add second type of agent
-  + play / impl. killing and spreading
-  + write abstract agent class
-  - write helper detection functions for neighboring agents
-'''
+
+class TorusWorld(np.ndarray):
+    def __new__(cls, input_array, info=None):
+        return np.asarray(input_array).view(cls)
+
+    def __array_finalize__(self, obj):
+        if obj is None: return
+
+    @property
+    def rows(self):
+        return self.shape[0]
+
+    @property
+    def cols(self):
+        return self.shape[1]
+
+    def field(self, row, col):
+        return self[row % self.rows, col % self.cols]
 
 
 class Field(BoxLayout):
-    r = NumericProperty(1)
-    g = NumericProperty(1)
-    b = NumericProperty(1)
+    color = ListProperty([1, 1, 1, 1])
 
 
 class Agent(Widget):
@@ -36,18 +42,26 @@ class Agent(Widget):
         self.row = row
         self.col = col
 
-    def random_move(self, world_rows, world_cols):
-        self.row += randint(-1, 1)
-        self.col += randint(-1, 1)
-        # wrap axes - simulate torus world
-        if self.row >= world_rows:
-            self.row = 0
-        elif self.row < 0:
-            self.row += world_rows
-        if self.col >= world_cols:
-            self.col = 0
-        elif self.col < 0:
-            self.col += world_cols
+    def random_move(self, world):
+        # move to random unoccupied neighboring field
+        new_row = self.row + randint(-1, 1)
+        new_col = self.col + randint(-1, 1)
+        if len(world.field(new_row, new_col).children) > 0:
+            self.random_move(world)
+        else:  # FIXME: refactor - world should normalise the values, not the agent
+            self.row = new_row % world.rows
+            self.col = new_col % world.cols
+
+    def neighboring_agents(self, world):
+        neighbors = world.field(self.row - 1, self.col - 1).children +\
+                    world.field(self.row - 1, self.col).children +\
+                    world.field(self.row - 1, self.col + 1).children +\
+                    world.field(self.row, self.col - 1).children +\
+                    world.field(self.row, self.col + 1).children +\
+                    world.field(self.row + 1, self.col - 1).children +\
+                    world.field(self.row + 1, self.col).children +\
+                    world.field(self.row + 1, self.col + 1).children
+        return neighbors
 
 
 class Zombie(Agent):
@@ -71,7 +85,7 @@ class MtxCanvas(GridLayout):
         self.cols = dim[1]
         self.spacing = 1
 
-        self.fields = np.array([[Field() for _ in range(self.cols)] for _ in range(self.rows)])
+        self.fields = TorusWorld([[Field() for _ in range(self.cols)] for _ in range(self.rows)])
         for field in self.fields.flat:
             self.add_widget(field)
 
@@ -84,48 +98,48 @@ class MtxCanvas(GridLayout):
             self.fields[human.row, human.col].add_widget(human)
 
     def update(self, dt):
-        # some logic for moving agents
-
-        dead_zombies = []
-        for z1 in self.zombies:
-            for z2 in self.zombies:
-                if z1 is not z2:
-                    if z1.row == z2.row and z1.col == z2.col:
-                        self.fields[z1.row, z1.col].remove_widget(z1)
-                        self.fields[z1.row, z1.col].remove_widget(z2)
-                        dead_zombies.append(z1)
-                        dead_zombies.append(z2)
-        dead_zombies = np.array(dead_zombies)
-        self.zombies = np.setdiff1d(self.zombies, dead_zombies)
-
-        ex_humans = []
-        new_zombies = []
-        for z in self.zombies:
-            for h in self.humans:
-                if z.row == h.row and z.col == h.col:
-                    if randint(0, 9) < 5:
-                        ex_humans.append(h)
-                        new_zombie = Zombie(z.row, z.col)
-                        new_zombies.append(new_zombie)
-                        self.fields[z.row, z.col].remove_widget(h)
-                        self.fields[z.row, z.col].add_widget(new_zombie)  # new zombie is born
-
-        ex_humans = np.array(ex_humans)
-        self.humans = np.setdiff1d(self.humans, ex_humans)
-        self.zombies = np.concatenate((self.zombies, new_zombies))
-
         # move agents
         for a in self.agents():
             self.fields[a.row, a.col].remove_widget(a)
-            a.random_move(self.rows, self.cols)
+            a.random_move(self.fields)
             self.fields[a.row, a.col].add_widget(a)
+
+        # conflict
+        dead_humans = []
+        dead_zombies = []
+        for zombie in self.zombies:
+            for neighbor in zombie.neighboring_agents(self.fields):
+                if type(neighbor) is Human:
+                    if random() > 0.77:  # conversion threshold
+                        dead_humans.append(neighbor)
+                    else:
+                        dead_zombies.append(zombie)
+                        self.fields[zombie.row, zombie.col].remove_widget(zombie)
+                        break  # after the zombie has been killed, he can not infect further victims
+        self.zombies = np.setdiff1d(self.zombies, np.array(dead_zombies))
+        zombabies = []
+        for human in dead_humans:
+            self.fields[human.row, human.col].remove_widget(human)
+            zombaby = Zombie(human.row, human.col)
+            zombabies.append(zombaby)
+            self.fields[human.row, human.col].add_widget(zombaby)
+        dead_humans = np.array(dead_humans)
+        self.humans = np.setdiff1d(self.humans, dead_humans)
+        self.zombies = np.concatenate((self.zombies, zombabies))
+
+        if len(self.zombies) == 0 or len(self.humans) == 0:
+            if len(self.zombies) == 0:
+                print "HUMANS WON!"
+            else:
+                print "ZOMBIES WON!"
+            exit(0)
 
 
 class MtxApp(App):
     def build(self):
         mtx = MtxCanvas()
-        mtx.init_base(dim=(30, 30), zombie_num=10, human_num=100)
-        Clock.schedule_interval(mtx.update, 1.0 / 40.0)
+        mtx.init_base(dim=(30, 30), zombie_num=20, human_num=15)
+        Clock.schedule_interval(mtx.update, 1.0 / 60.0)
         return mtx
 
 if __name__ == '__main__':
