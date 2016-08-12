@@ -1,14 +1,14 @@
 from kivy.app import App
 from kivy.uix.widget import Widget
+from kivy.uix.label import Label
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.floatlayout import FloatLayout
 from kivy.properties import ListProperty
 from kivy.clock import Clock
 from random import randint, random
 import numpy as np
 
-# TODO:
-# - Inspect jupyter code etc.
 # Questions for mentor:
 # - Snapshot history support for simulation necessary? simple implementation by storing ndarray to disk?
 # - Python version constraints for used libraries? First check online
@@ -109,14 +109,16 @@ class MtxCanvas(GridLayout):
     fields = None
     zombies = None
     humans = None
+    stats = None
 
     def agents(self):
         return np.concatenate([self.zombies, self.humans])
 
-    def init_base(self, dim=(5, 5), zombie_num=1, human_num=5):
+    def init_base(self, stats_label, dim=(5, 5), zombie_num=1, human_num=5):
         self.rows = dim[0]
         self.cols = dim[1]
         self.spacing = 1
+        self.stats = stats_label
 
         self.fields = TorusWorld([[Field() for _ in range(self.cols)] for _ in range(self.rows)])
         for field in self.fields.flat:
@@ -164,7 +166,7 @@ class MtxCanvas(GridLayout):
         for zombie in self.zombies:
             for neighbor in zombie.neighboring_agents(self.fields):
                 if type(neighbor) is Human:
-                    if random() > 0.77:  # conversion threshold
+                    if random() > 0.8:  # conversion threshold
                         dead_humans.append(neighbor)
                     else:
                         zombie.kill()
@@ -179,6 +181,8 @@ class MtxCanvas(GridLayout):
         self.humans = np.setdiff1d(self.humans, dead_humans)
         self.zombies = np.concatenate((self.zombies, zombabies))
 
+        self.stats.text = "Zombies: %d\nHumans: %d" % (len(self.zombies), len(self.humans))
+
         if len(self.zombies) == 0 or len(self.humans) == 0:
             if len(self.zombies) == 0:
                 print "HUMANS WON!"
@@ -190,10 +194,14 @@ class MtxCanvas(GridLayout):
 
 class MtxApp(App):
     def build(self):
-        mtx = MtxCanvas()
-        mtx.init_base(dim=(20, 20), zombie_num=15, human_num=5)
+        mtx = MtxCanvas(size_hint=(1, 1))
+        stats = Label(text='Hello world', color=(0, 0, 0, 0.7), size_hint=(.1, .05), pos_hint={'x': .05, 'y': .05})
+        mtx.init_base(stats_label=stats, dim=(20, 20), zombie_num=15, human_num=4)
         Clock.schedule_interval(mtx.update, 1.0 / 7.0)
-        return mtx
+        pygent_canvas = FloatLayout()
+        pygent_canvas.add_widget(mtx)
+        pygent_canvas.add_widget(stats)
+        return pygent_canvas
 
 if __name__ == '__main__':
     MtxApp().run()
