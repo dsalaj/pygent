@@ -59,9 +59,9 @@ class Agent(Widget):
             self.col = new_col % world.cols
 
     def move_towards(self, world, target):
-        # FIXME: bad comparison of distance! need to use modulo etc. because in torus, calc distances and compare
-        row_direction = 1 if self.row < target.row else (-1 if self.row > target.row else 0)
-        col_direction = 1 if self.col < target.col else (-1 if self.col > target.col else 0)
+        # direction calculated with consideration about the torus world (untested)
+        row_direction = 1 if (target.row - self.row < world.rows/2) else (-1 if (self.row - target.row != 0) else 0)
+        col_direction = 1 if (target.col - self.col < world.cols/2) else (-1 if (self.col - target.col != 0) else 0)
         new_row = self.row + row_direction
         new_col = self.col + col_direction
         if len(world.field(new_row, new_col).children) > 0:  # if cell occupied
@@ -71,11 +71,16 @@ class Agent(Widget):
             self.col = new_col % world.cols
 
     def find_nearest(self, world, targets):
+        # FIXME: build ndarrays of target coordinate or even better store coords in ndarray
+        # FIXME: use some minimization function to find the nearest neighbor, refresh kd-tree use?
+        agent_coords = np.array([self.row, self.col])
         closest = targets[0]
-        closest_diff = (self.row - closest.row, self.col - closest.col)
+        target_coords = np.array([closest.row, closest.col])
+        closest_diff = np.linalg.norm(agent_coords - target_coords)
         for target in targets:
-            diff = (self.row - target.row, self.col - target.col)
-            if diff < closest_diff:  # FIXME: proper distance comparison from numpy
+            target_coords = np.array([closest.row, closest.col])
+            diff = np.linalg.norm(agent_coords - target_coords)
+            if diff < closest_diff:
                 closest = target
                 closest_diff = diff
         return target
@@ -181,7 +186,7 @@ class MtxCanvas(GridLayout):
         self.humans = np.setdiff1d(self.humans, dead_humans)
         self.zombies = np.concatenate((self.zombies, zombabies))
 
-        self.stats.text = "Zombies: %d\nHumans: %d" % (len(self.zombies), len(self.humans))
+        self.stats.text = " Zombies: %d\n Humans: %d" % (len(self.zombies), len(self.humans))
 
         if len(self.zombies) == 0 or len(self.humans) == 0:
             if len(self.zombies) == 0:
@@ -192,11 +197,15 @@ class MtxCanvas(GridLayout):
             exit(0)
 
 
+class Stats(Label):
+    pass
+
+
 class MtxApp(App):
     def build(self):
         mtx = MtxCanvas(size_hint=(1, 1))
-        stats = Label(text='Hello world', color=(0, 0, 0, 0.7), size_hint=(.1, .05), pos_hint={'x': .05, 'y': .05})
-        mtx.init_base(stats_label=stats, dim=(20, 20), zombie_num=15, human_num=4)
+        stats = Stats(color=(1, 1, 1, 1), size_hint=(.15, .10), pos_hint={'x': .05, 'y': .05}, font_size=20)
+        mtx.init_base(stats_label=stats, dim=(20, 20), zombie_num=25, human_num=5)
         Clock.schedule_interval(mtx.update, 1.0 / 7.0)
         pygent_canvas = FloatLayout()
         pygent_canvas.add_widget(mtx)
