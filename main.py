@@ -6,12 +6,15 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
 from kivy.properties import ListProperty
 from kivy.clock import Clock
-from random import randint, random
+from random import randint, random, choice
 import numpy as np
 
 # Questions for mentor:
 # - Snapshot history support for simulation necessary? simple implementation by storing ndarray to disk?
 # - Python version constraints for used libraries? First check online
+
+# agent can stay in place as a valid move
+STAY_IN_PLACE_VALID = False
 
 
 class TorusWorld(np.ndarray):
@@ -48,10 +51,19 @@ class Agent(Widget):
         self.row = row
         self.col = col
 
+    @staticmethod
+    def random_direction_step():
+        # return random direction step
+        if STAY_IN_PLACE_VALID:
+            return tuple([randint(-1, 1), randint(-1, 1)])
+        else:
+            return choice([(1, -1), (1, 0), (1, 1), (0, -1), (0, 1), (-1, -1), (-1, 0), (-1, 1)])
+
     def move_random(self, world):
         # move to random unoccupied neighboring field
-        new_row = self.row + randint(-1, 1)  # TODO: absolute sum should not be zero
-        new_col = self.col + randint(-1, 1)
+        random_step = self.random_direction_step()
+        new_row = self.row + random_step[0]
+        new_col = self.col + random_step[1]
         if len(world.field(new_row, new_col).children) > 0:  # if cell occupied
             self.move_random(world)
         else:  # FIXME: refactor - world should normalise the values, not the agent
