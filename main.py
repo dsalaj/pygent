@@ -10,11 +10,13 @@ from random import randint, random, choice
 import numpy as np
 
 # Questions for mentor:
-# - Snapshot history support for simulation necessary? simple implementation by storing ndarray to disk?
-# - Python version constraints for used libraries? First check online
+# - Snapshot history support for simulation necessary? simple implementation by storing ndarray to file?
+# - Python version constraints for used libraries?
 
 # agent can stay in place as a valid move
 STAY_IN_PLACE_VALID = False
+# conversion threshold
+ZOMBIE_CONVERSION_RATE = 0.2
 
 
 class TorusWorld(np.ndarray):
@@ -183,7 +185,7 @@ class MtxCanvas(GridLayout):
         for zombie in self.zombies:
             for neighbor in zombie.neighboring_agents(self.fields):
                 if type(neighbor) is Human:
-                    if random() > 0.8:  # conversion threshold
+                    if random() < ZOMBIE_CONVERSION_RATE:
                         dead_humans.append(neighbor)
                     else:
                         zombie.kill()
@@ -217,7 +219,7 @@ class MtxApp(App):
     def build(self):
         mtx = MtxCanvas(size_hint=(1, 1))
         stats = Stats(color=(1, 1, 1, 1), size_hint=(.15, .10), pos_hint={'x': .05, 'y': .05}, font_size=20)
-        mtx.init_base(stats_label=stats, dim=(20, 20), zombie_num=25, human_num=5)
+        mtx.init_base(stats_label=stats, dim=(20, 20), zombie_num=25, human_num=6)
         Clock.schedule_interval(mtx.update, 1.0 / 7.0)
         pygent_canvas = FloatLayout()
         pygent_canvas.add_widget(mtx)
